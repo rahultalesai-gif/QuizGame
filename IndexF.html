@@ -1,0 +1,279 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
+  <title>Word Jumble Puzzle</title>
+
+  <!-- Telegram WebApp SDK -->
+  <script src="https://telegram.org/js/telegram-web-app.js"></script>
+  
+  <!-- TeleAds Pro SDK -->
+  <script src="https://assets.teleads.pro/sdk/index.umd.js"></script>
+
+  <!-- Tailwind CSS -->
+  <script src="https://cdn.tailwindcss.com"></script>
+
+  <style>
+    body { min-height: 100dvh; overflow: hidden; background-color: #0f172a; }
+    .animate-shake { animation: shake 0.4s cubic-bezier(.36,.07,.19,.97) both; }
+    @keyframes shake { 10%, 90% { transform: translate3d(-1px, 0, 0); } 20%, 80% { transform: translate3d(2px, 0, 0); } 30%, 50%, 70% { transform: translate3d(-3px, 0, 0); } 40%, 60% { transform: translate3d(3px, 0, 0); } }
+    .letter-box { background: linear-gradient(135deg, #1e293b, #0f172a); }
+  </style>
+</head>
+<body class="text-white flex flex-col items-center p-4 font-sans select-none">
+
+  <!-- ================= HEADER (USER PROFILE & SHARE) ================= -->
+  <header class="w-full max-w-sm flex justify-between items-center py-2 border-b border-slate-800">
+    <div class="flex items-center gap-3">
+      <!-- User Avatar -->
+      <div id="user-avatar" class="w-9 h-9 rounded-full bg-cyan-500/20 text-cyan-400 flex items-center justify-center font-black text-lg border border-cyan-500/30 shadow-inner">&#128100;</div>
+      <div class="flex flex-col">
+        <!-- User Name -->
+        <h1 id="user-name-display" class="text-xs font-black text-white tracking-widest uppercase">GUEST</h1>
+        <!-- Current Level -->
+        <p class="text-[10px] text-cyan-400 font-mono font-bold tracking-widest mt-0.5">LEVEL <span id="level-display-header">1</span></p>
+      </div>
+    </div>
+    
+    <!-- Share Button -->
+    <a href="https://t.me/share/url?url=https://t.me/YOUR_BOT_USERNAME&text=I'm%20playing%20Word%20Jumble!%20%F0%9F%A7%A0%20Can%20you%20solve%20these%20brain%20puzzles%3F" target="_blank" class="bg-slate-800 hover:bg-slate-700 active:scale-95 px-3 py-2 rounded-lg text-[10px] font-bold shadow-md transition flex items-center gap-1.5 text-gray-300 border border-slate-700">
+      SHARE &#10148;
+    </a>
+  </header>
+
+  <!-- ================= GAME TITLE ================= -->
+  <div class="w-full max-w-sm text-center mt-6 mb-4">
+    <h2 class="text-2xl font-black text-cyan-400 tracking-widest uppercase">Word Jumble</h2>
+    <p class="text-[10px] text-gray-400 font-mono uppercase tracking-widest mt-1">Unscramble the letters below</p>
+  </div>
+
+  <!-- ================= MAIN GAME AREA ================= -->
+  <main class="w-full max-w-sm flex-1 flex flex-col items-center">
+
+    <!-- Scrambled Word Display -->
+    <div id="scrambled-display" class="flex flex-wrap justify-center gap-2 mb-8 w-full min-h-[60px]">
+      <!-- Letters injected by JS -->
+    </div>
+
+    <!-- Progressive Hint Section -->
+    <div id="hint-box" class="w-full text-center mb-5 hidden">
+      <p class="text-xs text-cyan-400 font-mono bg-cyan-400/10 inline-block px-4 py-2 rounded-xl border border-cyan-500/30 shadow-inner">
+        Hint: <span id="hint-text" class="font-black text-xl uppercase ml-2 tracking-[0.2em] text-white"></span>
+      </p>
+    </div>
+
+    <!-- Input Area -->
+    <div class="w-full flex flex-col gap-3">
+      <input type="text" id="answer-input" placeholder="TYPE THE WORD..." autocomplete="off" class="w-full bg-slate-800 border-2 border-slate-600 rounded-xl p-4 text-center text-base text-white font-black uppercase tracking-widest focus:outline-none focus:border-cyan-400 transition shadow-inner" />
+      
+      <button onclick="checkAnswer()" class="w-full bg-cyan-500 hover:bg-cyan-400 active:scale-95 text-slate-950 font-black py-4 rounded-xl text-sm tracking-wider shadow-[0_4px_15px_rgba(6,182,212,0.3)] transition">
+        CHECK ANSWER &#10004;
+      </button>
+    </div>
+
+    <!-- Hint Button (Watch Ad) -->
+    <div class="mt-4 w-full">
+      <button id="hint-btn" onclick="getHintWithAd()" class="w-full bg-slate-800 border border-slate-600 hover:bg-slate-700 active:scale-95 text-gray-300 font-bold py-3.5 rounded-xl text-xs flex items-center justify-center gap-2 transition shadow-md">
+        <span id="hint-btn-text">Reveal 1st Letter (Watch Ad)</span> <span class="text-base">&#128161;</span>
+      </button>
+    </div>
+
+  </main>
+
+  <!-- ================= SUCCESS OVERLAY ================= -->
+  <div id="success-overlay" class="fixed inset-0 bg-slate-950/95 z-50 hidden flex-col items-center justify-center p-4 backdrop-blur-sm">
+    <div class="text-7xl mb-4">&#11088;</div>
+    <h2 class="text-3xl font-black text-cyan-400 mb-2 tracking-widest">CORRECT!</h2>
+    <p class="text-gray-300 mb-8 font-mono text-center text-sm">Great job solving that one.</p>
+    <button onclick="nextLevel()" class="w-full max-w-xs bg-cyan-500 text-slate-950 font-black py-4 rounded-xl text-sm tracking-wider shadow-[0_4px_15px_rgba(6,182,212,0.4)] active:scale-95 transition">
+      PLAY NEXT LEVEL &#10140;
+    </button>
+  </div>
+
+  <!-- ================= SCRIPTS ================= -->
+  <script>
+    // 1. Telegram WebApp Setup
+    const tg = window.Telegram?.WebApp;
+    if (tg) { 
+      tg.ready(); 
+      tg.expand(); 
+      
+      if (tg.initDataUnsafe && tg.initDataUnsafe.user) {
+        const firstName = tg.initDataUnsafe.user.first_name;
+        document.getElementById('user-name-display').textContent = "HI, " + firstName;
+        document.getElementById('user-avatar').textContent = firstName.charAt(0).toUpperCase();
+      }
+    }
+
+    // 2. TeleAds Pro SDK INIT 
+    try {
+      if (window.TeleAdsTMA) {
+        window.TeleAdsTMA.init({
+          token: '9585eed15f4752eaf0cf44c815add27f1eceb0a5',
+          debug: false,
+          onInitiated: () => console.log('TeleAds Initialized'),
+          onError: (err) => console.log('TeleAds Error:', err)
+        });
+      }
+    } catch(e) { 
+      console.log("TeleAds Setup Error:", e); 
+    }
+
+    // 3. WORD DATABASE (Easy, Medium, Hard)
+    const wordsEasy = [
+      "CAT", "DOG", "SUN", "MOON", "TREE", "BIRD", "FISH", "STAR", "FIRE", "ICE", 
+      "CAR", "BOAT", "BOOK", "DOOR", "KEY", "RING", "TIME", "WIND", "SNOW", "RAIN", 
+      "GOLD", "KING", "HERO", "MIND", "SOUL", "HOPE", "BEAR", "LION", "MILK", "ROSE"
+    ];
+    const wordsMedium = [
+      "WATER", "EARTH", "MAGIC", "BRAIN", "SMART", "LIGHT", "PHONE", "TIGER", 
+      "HOUSE", "TRAIN", "PLANT", "CLOCK", "CHAIR", "TABLE", "MUSIC", "DREAM", 
+      "SMILE", "HEART", "CLOUD", "STORM", "RIVER", "OCEAN", "FRUIT", "APPLE", 
+      "PIZZA", "BREAD", "GHOST", "NIGHT", "SPACE", "ALIEN", "ROBOT", "MOVIE", 
+      "GUITAR", "DANCE", "SPORT", "BEACH", "FOREST", "WINTER", "SUMMER", "SPRING"
+    ];
+    const wordsHard = [
+      "MOUNTAIN", "ELEPHANT", "DINOSAUR", "UNIVERSE", "COMPUTER", "INTERNET", 
+      "HOSPITAL", "AIRPLANE", "UMBRELLA", "DIAMOND", "VOLCANO", "MONSTER", 
+      "VAMPIRE", "WARRIOR", "PRINCESS", "PENGUIN", "KANGAROO", "BUTTERFLY", 
+      "SANDWICH", "CHOCOLATE", "MYSTERY", "JOURNEY", "FREEDOM", "CHAMPION", 
+      "FESTIVAL", "GALAXY", "SYMPHONY", "BUILDING", "VACATION", "LANGUAGE"
+    ];
+
+    // 4. GAME VARIABLES & AUTO-SAVE
+    let currentLevel = parseInt(localStorage.getItem('word_jumble_level')) || 1;
+    let currentWord = "";
+    let scrambledWord = "";
+    let hintCount = 0;
+
+    function scramble(word) {
+      let arr = word.split('');
+      for (let i = arr.length - 1; i > 0; i--) {
+        const j = Math.floor(Math.random() * (i + 1));
+        [arr[i], arr[j]] = [arr[j], arr[i]];
+      }
+      let result = arr.join('');
+      if (result === word && word.length > 1) return scramble(word);
+      return result;
+    }
+
+    function getRandomWord() {
+      let pool = [];
+      if (currentLevel <= 5) {
+        pool = wordsEasy;
+      } else if (currentLevel <= 15) {
+        pool = wordsMedium;
+      } else {
+        pool = wordsHard;
+      }
+      return pool[Math.floor(Math.random() * pool.length)];
+    }
+
+    function loadLevel() {
+      currentWord = getRandomWord();
+      scrambledWord = scramble(currentWord);
+      hintCount = 0;
+      
+      document.getElementById('level-display-header').textContent = currentLevel;
+      document.getElementById('answer-input').value = '';
+      document.getElementById('hint-box').classList.add('hidden');
+      
+      const btn = document.getElementById('hint-btn');
+      btn.disabled = false;
+      btn.classList.remove('opacity-50');
+      document.getElementById('hint-btn-text').textContent = "Reveal 1st Letter (Watch Ad)";
+
+      const displayContainer = document.getElementById('scrambled-display');
+      displayContainer.innerHTML = '';
+      for (let i = 0; i < scrambledWord.length; i++) {
+        const letterDiv = document.createElement('div');
+        letterDiv.className = 'letter-box w-11 h-12 md:w-12 md:h-14 border border-slate-600 rounded-lg flex items-center justify-center text-xl md:text-2xl font-black text-white shadow-lg m-0.5';
+        letterDiv.textContent = scrambledWord[i];
+        displayContainer.appendChild(letterDiv);
+      }
+    }
+
+    function checkAnswer() {
+      const inputEl = document.getElementById('answer-input');
+      const userAnswer = inputEl.value.trim().toUpperCase();
+
+      if (userAnswer === currentWord) {
+        document.getElementById('success-overlay').classList.remove('hidden');
+        document.getElementById('success-overlay').classList.add('flex');
+      } else {
+        inputEl.classList.add('animate-shake', 'border-red-500');
+        setTimeout(() => inputEl.classList.remove('animate-shake', 'border-red-500'), 500);
+      }
+    }
+
+    // ================= TELEADS INTERSTITIAL LOGIC =================
+    // Triggers every 3 levels
+    function nextLevel() {
+      document.getElementById('success-overlay').classList.add('hidden');
+      document.getElementById('success-overlay').classList.remove('flex');
+      
+      currentLevel++;
+      localStorage.setItem('word_jumble_level', currentLevel);
+
+      if (currentLevel % 3 === 0 && window.TeleAdsTMA) {
+        window.TeleAdsTMA.showAd({ adUnitId: '1294' })
+          .then(() => {
+            // Ad played successfully
+            loadLevel();
+          })
+          .catch((error) => {
+            // Ad failed or closed early, but we still load level to prevent getting stuck
+            console.log("Interstitial Failed:", error);
+            loadLevel();
+          });
+      } else {
+        loadLevel();
+      }
+    }
+
+    // ================= TELEADS REWARDED LOGIC =================
+    // Triggers when user clicks 'Get Hint'
+    function getHintWithAd() {
+      if (window.TeleAdsTMA) {
+        window.TeleAdsTMA.showAd({ adUnitId: '1295' })
+          .then(() => {
+            // User watched the rewarded video, give hint!
+            showHint();
+          })
+          .catch((error) => {
+            // If ad fails to load, give hint anyway so user isn't stuck
+            console.log("Rewarded Ad Failed:", error);
+            showHint();
+          });
+      } else {
+        showHint();
+      }
+    }
+
+    function showHint() {
+      hintCount++;
+      const hintBox = document.getElementById('hint-box');
+      const hintText = document.getElementById('hint-text');
+      const btn = document.getElementById('hint-btn');
+      const btnText = document.getElementById('hint-btn-text');
+      
+      let revealedPart = currentWord.substring(0, hintCount);
+      hintText.textContent = revealedPart;
+      hintBox.classList.remove('hidden');
+
+      // Maximum hints limit: Stop when 1 letter is left
+      if (hintCount >= currentWord.length - 1) {
+        btnText.textContent = "No more hints available";
+        btn.disabled = true;
+        btn.classList.add('opacity-50');
+      } else {
+        btnText.textContent = `Reveal Next Letter (Watch Ad)`;
+      }
+    }
+
+    // Start Game
+    document.addEventListener('DOMContentLoaded', loadLevel);
+  </script>
+</body>
+</html>
